@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Embedding Alignment Solver</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 25px rgba(99, 102, 241, 0.8); }
+        }
+        .glow-indigo { animation: pulse-glow 2s infinite; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-4 sm:p-8 font-sans">
+    <div class="max-w-5xl w-full space-y-8">
+        <!-- Header -->
+        <header class="text-center space-y-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-1">
+                <span class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span> Made By Ankan
+            </div>
+            <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-white">
+                Dual Embedding <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Alignment Solver</span>
+            </h1>
+            <p class="text-slate-400 max-w-2xl mx-auto text-sm sm:text-base">
+                Evaluates latent space rank divergence between <code class="text-indigo-300 bg-slate-900 px-1.5 py-0.5 rounded text-xs font-mono">nomic-embed-text</code> and <code class="text-purple-300 bg-slate-900 px-1.5 py-0.5 rounded text-xs font-mono">mxbai-embed-large</code> using FAISS FlatIP & Spearman's Rank Correlation (&rho;).
+            </p>
+        </header>
+
+        <!-- Main Card -->
+        <main class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm space-y-6">
+            <!-- Mode / Action Bar -->
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <i class="fa-solid fa-database text-indigo-400"></i> Dataset Input
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="loadDefaultBtn" class="px-3 py-1.5 rounded-lg bg-indigo-950/70 border border-indigo-500/40 hover:bg-indigo-900/60 text-indigo-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Load Assignment Dataset
+                    </button>
+                    <button type="button" id="triggerFileBtn" class="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-upload"></i> Upload .json
+                    </button>
+                    <button type="button" id="clearBtn" class="px-3 py-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer">
+                        <i class="fa-solid fa-trash-can"></i> Clear
+                    </button>
+                    <input type="file" id="fileInput" accept=".json,application/json" class="hidden">
+                </div>
+            </div>
+
+            <!-- Drag & Drop Zone / JSON Input Area -->
+            <form id="solverForm" class="space-y-5">
+                <div id="dropzone" class="relative group border-2 border-dashed border-slate-700 rounded-xl bg-slate-950/60 p-4 transition-all">
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="jsonInput" class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-400"></i> JSON Dataset (sentences & queries)
+                        </label>
+                        <span id="charCount" class="text-[11px] font-mono text-slate-500">0 characters</span>
+                    </div>
+                    <textarea id="jsonInput" name="jsonInput" rows="10" placeholder='Click "Load Assignment Dataset" or paste your JSON dataset here, e.g. {"sentences": [...], "queries": [...]}'
+                        class="w-full bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs sm:text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all resize-y"></textarea>
+                    <div id="fileBadge" class="hidden mt-2 p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-file-code"></i> <span id="loadedFileName"></span></span>
+                        <span id="loadedFileSize" class="text-slate-400 font-mono text-[11px]"></span>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" id="submitBtn" class="w-full py-4 px-6 rounded-xl font-bold text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500 shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span id="btnText"><i class="fa-solid fa-bolt mr-1"></i> Run Solver & Generate 10&times;7 Matrix</span>
+                    <span id="btnSpinner" class="hidden"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Aligning Embeddings & Calculating &rho;...</span>
+                </button>
+            </form>
+
+            <!-- Error Banner -->
+            <div id="errorBanner" class="hidden p-4 rounded-xl bg-red-950/60 border border-red-500/50 text-red-300 text-sm flex items-start gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-red-400 text-lg mt-0.5 shrink-0"></i>
+                <div id="errorMessage"></div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="hidden space-y-6 pt-6 border-t border-slate-800">
+                <!-- Answer Card -->
+                <div class="bg-slate-950 border-2 border-emerald-500/50 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-3 py-1 rounded-bl-xl border-l border-b border-emerald-500/30 uppercase tracking-widest">
+                        Official 10&times;7 Matrix
+                    </div>
+                    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-check text-emerald-400"></i> Ready for Submission (Paste directly)
+                    </div>
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div id="formattedMatrix" class="font-mono text-xs sm:text-sm font-semibold text-emerald-400 bg-slate-900/80 p-4 rounded-xl border border-emerald-500/30 overflow-x-auto w-full select-all leading-relaxed whitespace-pre-wrap break-all">
+                            --
+                        </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                        <span class="text-xs text-slate-500">Format: <code>[[idx_a1, idx_a2, idx_a3, idx_b1, idx_b2, idx_b3, rho], ... 10 rows]</code></span>
+                        <button id="copyBtn" class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-lg transition-all shadow-md shrink-0 cursor-pointer">
+                            <i class="fa-solid fa-copy"></i> Copy 10&times;7 Matrix
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Validation Check Badges -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500 block mb-1">Index Range [0..49]</span>
+                        <span id="badgeIndices" class="font-bold text-emerald-400 text-sm flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-check"></i> Valid
+                        </span>
+                    </div>
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500 block mb-1">Distinct Top-3</span>
+                        <span id="badgeDistinct" class="font-bold text-emerald-400 text-sm flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-check"></i> Verified
+                        </span>
+                    </div>
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500 block mb-1">Model Diversity (&rho; &lt; 0.95)</span>
+                        <span id="badgeDiversity" class="font-bold text-emerald-400 text-sm flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-check"></i> Passed
+                        </span>
+                    </div>
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500 block mb-1">Mean Spearman &rho;</span>
+                        <span id="statMeanRho" class="font-bold text-indigo-400 text-sm">--</span>
+                    </div>
+                </div>
+
+                <!-- Detailed Breakdown Table -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-table-list text-indigo-400"></i> Query-by-Query Alignment Breakdown
+                    </h3>
+                    <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                                <tr>
+                                    <th class="p-3 w-12 text-center">#</th>
+                                    <th class="p-3">Query</th>
+                                    <th class="p-3 text-indigo-300">Model A (nomic) Top-3</th>
+                                    <th class="p-3 text-purple-300">Model B (mxbai) Top-3</th>
+                                    <th class="p-3 text-right">Spearman &rho;</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailsTableBody" class="divide-y divide-slate-800 font-mono">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- REST API / cURL Instructions -->
+        <footer class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-5 text-xs text-slate-400 space-y-3">
+            <div class="font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <i class="fa-solid fa-terminal text-amber-400"></i> REST API / cURL Automation
+            </div>
+            <p class="text-slate-400 text-[11px]">
+                Submit directly from command line or automated script:
+            </p>
+            <pre id="curlExample" class="bg-slate-950 p-3 rounded-lg font-mono text-slate-300 overflow-x-auto text-[11px] border border-slate-800 select-all">curl.exe -X POST https://dual-embedding-solver.onrender.com/api/solve -H "Content-Type: application/json" -d @dataset.json</pre>
+            <p class="text-[11px] text-slate-500">
+                You can also call without arguments to solve the default 50-sentence & 10-query benchmark dataset:
+                <code class="text-slate-400 bg-slate-950 px-1 py-0.5 rounded">curl.exe -X POST https://dual-embedding-solver.onrender.com/api/solve</code>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        const currentOrigin = window.location.origin;
+        document.getElementById('curlExample').textContent = `curl.exe -X POST ${currentOrigin}/api/solve -H "Content-Type: application/json" -d @dataset.json`;
+
+        const solverForm = document.getElementById('solverForm');
+        const jsonInput = document.getElementById('jsonInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const loadDefaultBtn = document.getElementById('loadDefaultBtn');
+        const triggerFileBtn = document.getElementById('triggerFileBtn');
+        const fileInput = document.getElementById('fileInput');
+        const clearBtn = document.getElementById('clearBtn');
+        const charCount = document.getElementById('charCount');
+        const fileBadge = document.getElementById('fileBadge');
+        const loadedFileName = document.getElementById('loadedFileName');
+        const loadedFileSize = document.getElementById('loadedFileSize');
+        const errorBanner = document.getElementById('errorBanner');
+        const errorMessage = document.getElementById('errorMessage');
+        const resultsSection = document.getElementById('resultsSection');
+        const formattedMatrix = document.getElementById('formattedMatrix');
+        const copyBtn = document.getElementById('copyBtn');
+        const statMeanRho = document.getElementById('statMeanRho');
+        const detailsTableBody = document.getElementById('detailsTableBody');
+
+        // Character count listener
+        jsonInput.addEventListener('input', () => {
+            charCount.textContent = `${jsonInput.value.length.toLocaleString()} characters`;
+        });
+
+        // Clear button
+        clearBtn.addEventListener('click', () => {
+            jsonInput.value = '';
+            fileBadge.classList.add('hidden');
+            charCount.textContent = '0 characters';
+            hideError();
+            resultsSection.classList.add('hidden');
+        });
+
+        // Load Default Dataset
+        loadDefaultBtn.addEventListener('click', async () => {
+            try {
+                loadDefaultBtn.disabled = true;
+                loadDefaultBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+                const res = await fetch('/api/default');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    jsonInput.value = JSON.stringify({
+                        sentences: data.sentences,
+                        queries: data.queries
+                    }, null, 2);
+                    charCount.textContent = `${jsonInput.value.length.toLocaleString()} characters`;
+                    fileBadge.classList.add('hidden');
+                    hideError();
+                } else {
+                    showError(data.message || 'Failed to load default dataset');
+                }
+            } catch (err) {
+                showError('Error connecting to backend: ' + err.message);
+            } finally {
+                loadDefaultBtn.disabled = false;
+                loadDefaultBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Load Assignment Dataset';
+            }
+        });
+
+        // Upload JSON file trigger
+        triggerFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const file = e.target.files[0];
+                loadedFileName.textContent = file.name;
+                loadedFileSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+                fileBadge.classList.remove('hidden');
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    jsonInput.value = evt.target.result;
+                    charCount.textContent = `${jsonInput.value.length.toLocaleString()} characters`;
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Handle Solver Form Submit
+        solverForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideError();
+
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            btnSpinner.classList.remove('hidden');
+
+            let payload = null;
+            const rawVal = jsonInput.value.trim();
+            if (rawVal) {
+                try {
+                    payload = JSON.parse(rawVal);
+                } catch (parseErr) {
+                    showError("Invalid JSON input: " + parseErr.message);
+                    submitBtn.disabled = false;
+                    btnText.classList.remove('hidden');
+                    btnSpinner.classList.add('hidden');
+                    return;
+                }
+            }
+
+            try {
+                const res = await fetch('/api/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload || {})
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'success') {
+                    throw new Error(data.message || 'Failed to compute alignment matrix.');
+                }
+                displayResults(data);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+            }
+        });
+
+        function displayResults(data) {
+            formattedMatrix.textContent = data.matrix_json;
+            statMeanRho.textContent = data.validation.mean_rho.toFixed(4);
+
+            // Populate Breakdown Table
+            detailsTableBody.innerHTML = '';
+            data.details.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-900/60 transition-colors';
+
+                const topAStr = item.top3_a.map(d => `<span class="inline-block px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-500/40 text-indigo-300 font-mono text-[11px] mr-1">#${d.idx} (${d.score})</span>`).join('');
+                const topBStr = item.top3_b.map(d => `<span class="inline-block px-1.5 py-0.5 rounded bg-purple-950 border border-purple-500/40 text-purple-300 font-mono text-[11px] mr-1">#${d.idx} (${d.score})</span>`).join('');
+
+                tr.innerHTML = `
+                    <td class="p-3 text-center text-slate-500 font-bold">${idx + 1}</td>
+                    <td class="p-3 font-sans text-slate-300 text-xs max-w-xs truncate" title="${item.query_text}">${item.query_text}</td>
+                    <td class="p-3">${topAStr}</td>
+                    <td class="p-3">${topBStr}</td>
+                    <td class="p-3 text-right font-bold text-emerald-400">${item.spearman_rho.toFixed(4)}</td>
+                `;
+                detailsTableBody.appendChild(tr);
+            });
+
+            resultsSection.classList.remove('hidden');
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Copy Matrix to Clipboard
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = formattedMatrix.textContent.trim();
+            navigator.clipboard.writeText(textToCopy);
+            const orig = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied Matrix!';
+            copyBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+            copyBtn.classList.add('bg-green-700');
+            setTimeout(() => {
+                copyBtn.innerHTML = orig;
+                copyBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+                copyBtn.classList.remove('bg-green-700');
+            }, 2000);
+        });
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorBanner.classList.remove('hidden');
+        }
+        function hideError() {
+            errorBanner.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
