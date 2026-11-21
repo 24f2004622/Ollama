@@ -41,11 +41,8 @@
                     <i class="fa-solid fa-database text-indigo-400"></i> Dataset Input
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" id="loadDefaultBtn" class="px-3 py-1.5 rounded-lg bg-indigo-950/70 border border-indigo-500/40 hover:bg-indigo-900/60 text-indigo-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> Load Assignment Dataset
-                    </button>
-                    <button type="button" id="triggerFileBtn" class="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer">
-                        <i class="fa-solid fa-upload"></i> Upload .json
+                    <button type="button" id="triggerFileBtn" class="px-3.5 py-1.5 rounded-lg bg-indigo-950/70 border border-indigo-500/40 hover:bg-indigo-900/60 text-indigo-300 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-upload"></i> Upload .json File
                     </button>
                     <button type="button" id="clearBtn" class="px-3 py-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-400 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer">
                         <i class="fa-solid fa-trash-can"></i> Clear
@@ -63,7 +60,7 @@
                         </label>
                         <span id="charCount" class="text-[11px] font-mono text-slate-500">0 characters</span>
                     </div>
-                    <textarea id="jsonInput" name="jsonInput" rows="10" placeholder='Click "Load Assignment Dataset" or paste your JSON dataset here, e.g. {"sentences": [...], "queries": [...]}'
+                    <textarea id="jsonInput" name="jsonInput" rows="10" placeholder='Paste your JSON dataset here, or click "Upload .json File" above, e.g. {"sentences": [...], "queries": [...]}'
                         class="w-full bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs sm:text-sm font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all resize-y"></textarea>
                     <div id="fileBadge" class="hidden mt-2 p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
                         <span class="flex items-center gap-2"><i class="fa-solid fa-file-code"></i> <span id="loadedFileName"></span></span>
@@ -183,7 +180,6 @@
         const submitBtn = document.getElementById('submitBtn');
         const btnText = document.getElementById('btnText');
         const btnSpinner = document.getElementById('btnSpinner');
-        const loadDefaultBtn = document.getElementById('loadDefaultBtn');
         const triggerFileBtn = document.getElementById('triggerFileBtn');
         const fileInput = document.getElementById('fileInput');
         const clearBtn = document.getElementById('clearBtn');
@@ -211,32 +207,6 @@
             charCount.textContent = '0 characters';
             hideError();
             resultsSection.classList.add('hidden');
-        });
-
-        // Load Default Dataset
-        loadDefaultBtn.addEventListener('click', async () => {
-            try {
-                loadDefaultBtn.disabled = true;
-                loadDefaultBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-                const res = await fetch('/api/default');
-                const data = await res.json();
-                if (data.status === 'success') {
-                    jsonInput.value = JSON.stringify({
-                        sentences: data.sentences,
-                        queries: data.queries
-                    }, null, 2);
-                    charCount.textContent = `${jsonInput.value.length.toLocaleString()} characters`;
-                    fileBadge.classList.add('hidden');
-                    hideError();
-                } else {
-                    showError(data.message || 'Failed to load default dataset');
-                }
-            } catch (err) {
-                showError('Error connecting to backend: ' + err.message);
-            } finally {
-                loadDefaultBtn.disabled = false;
-                loadDefaultBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Load Assignment Dataset';
-            }
         });
 
         // Upload JSON file trigger
@@ -278,6 +248,12 @@
                     btnSpinner.classList.add('hidden');
                     return;
                 }
+            } else {
+                showError("Please paste your JSON dataset or upload a .json file first.");
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+                return;
             }
 
             try {
